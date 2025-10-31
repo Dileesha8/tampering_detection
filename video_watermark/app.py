@@ -5,6 +5,10 @@ import psutil
 import platform
 import logging
 import magic
+import cv2
+import pytesseract
+import numpy as np
+from skimage.metrics import structural_similarity as ssim
 from queue import Queue
 from flask import Flask, render_template, request, jsonify, send_file
 from flask_socketio import SocketIO, emit, join_room
@@ -19,6 +23,48 @@ from dotenv import load_dotenv
 from watermark.tamper_detection import analyze_video_for_tampering
 # If tamper_detection.py is in the root folder:
 # from tamper_detection import analyze_video_for_tampering
+# ----------------------------------------------------------
+# ✅ WATERMARK VERIFICATION FUNCTION
+# ----------------------------------------------------------
+def verify_watermark_presence(video_path, watermark_text, frame_interval=30):
+    """
+    Checks if the watermark text is present in the video using OCR.
+    """
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise ValueError("Cannot open video file for verification.")
+
+    frame_count = 0
+    detected_count = 0
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        frame_count += 1
+
+        # Process every Nth frame to save time
+        if frame_count % frame_interval != 0:
+            continue
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        text = pytesseract.image_to_string(gray)
+
+        if watermark_text.lower() in text.lower():
+            detected_count += 1
+
+    cap.release()
+
+    total_checked = frame_count // frame_interval
+    presence_ratio = detected_count / total_checked if total_checked > 0 else 0
+
+    return {
+        "video": os.path.basename(video_path),
+        "frames_checked": total_checked,
+        "frames_with_watermark": detected_count,
+        "presence_ratio": round(presence_ratio, 2),
+        "verified": presence_ratio > 0.7  # 70% threshold
+    }
 
 from watermark.dct_watermark import DCTWatermark
 from watermark.video_processor import VideoProcessor
@@ -694,8 +740,52 @@ def get_metrics():
 # ----------------------------------------------------------
 # ✅ NEW FEATURE: Tamper Detection API
 # ----------------------------------------------------------
+# ----------------------------------------------------------
+# ✅ NEW FEATURE: Watermark Verification API
+# ----------------------------------------------------------
+@app.route("/api/verify-watermark", methods=["POST"])
+@rate_limit(limit=5, window=60)  # Apply rate limiting
+@secure_endpoint
+def verify_watermark():
+    """
+    Verifies if the watermark is still embedded in a processed video.
+    Expects JSON with 'file_id' and 'watermark_text'.
+    """
+    try:
+        data = request.get_json()
+        file_id = data.get("file_id")
+        watermark_text = data.get("watermark_text")
+
+        if not file_id or not watermark_text:
+            return jsonify({"error": "Missing 'file_id' or 'watermark_text'"}), 400
+
+        if file_id not in file_registry:
+            return jsonify({'error': 'Processed file not found in registry'}), 404
+
+        # Get processed video path
+        file_info = file_registry[file_id]
+        video_path = os.path.join(app.config['PROCESSED_FOLDER'], file_info['processed_filename'])
+
+        if not os.path.exists(video_path):
+            return jsonify({"error": f"Video not found on disk: {video_path}"}), 404
+
+        logger.info(f"🔍 Verifying watermark for {video_path}...")
+
+        result = verify_watermark_presence(video_path, watermark_text)
+
+        logger.info(f"✅ Watermark verification completed for {video_path}")
+        return jsonify(result)
+
+    except Exception as e:
+        logger.error(f"❌ Watermark verification failed: {e}", exc_info=True)
+        return jsonify({"error": f"Watermark verification failed: {str(e)}"}), 500
+
+
+# ----------------------------------------------------------
+# ✅ EXISTING FEATURE: Tamper Detection API
+# ----------------------------------------------------------
 @app.route("/api/detect-tamper", methods=["POST"])
-@rate_limit(limit=5, window=60) # Apply rate limiting to this CPU-intensive task
+@rate_limit(limit=5, window=60)  # Apply rate limiting to this CPU-intensive task
 @secure_endpoint
 def detect_tamper():
     """
