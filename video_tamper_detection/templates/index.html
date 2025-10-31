@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Video Tampering Detection</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body class="p-5 bg-light">
+    <div class="container text-center">
+        <h2 class="mb-4">🎥 Video Tampering Detection</h2>
+        <form id="uploadForm" enctype="multipart/form-data">
+            <input type="file" name="video" class="form-control mb-3" accept="video/*" required>
+            <button class="btn btn-primary" type="submit">Analyze Video</button>
+        </form>
+
+        <div id="result" class="mt-4"></div>
+    </div>
+
+    <script>
+        const form = document.getElementById('uploadForm');
+        const resultDiv = document.getElementById('result');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(form);
+            resultDiv.innerHTML = "<p>Processing...</p>";
+
+            const res = await fetch('/analyze', { method: 'POST', body: formData });
+            const data = await res.json();
+
+            if (data.error) {
+                resultDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                return;
+            }
+
+            resultDiv.innerHTML = `
+                <div class="card p-3">
+                    <h4>📄 File: ${data.file}</h4>
+                    <p><b>Duration:</b> ${data.duration_sec}s</p>
+                    <p><b>FPS:</b> ${data.fps}</p>
+                    <p><b>Total Frames:</b> ${data.total_frames}</p>
+                    <p><b>Average Blur:</b> ${data.avg_blur}</p>
+                    <p><b>Blur Std Dev:</b> ${data.blur_stddev}</p>
+                    <p><b>Frozen Frames:</b> ${data.freeze_frames}</p>
+                    <hr>
+                    <h5>Status: <span class="${data.status === 'Tampered' ? 'text-danger' : 'text-success'}">${data.status}</span></h5>
+                    <p><b>Reason:</b> ${data.reason.join(', ')}</p>
+                </div>
+            `;
+        });
+    </script>
+</body>
+</html>
