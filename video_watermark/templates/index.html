@@ -9,7 +9,6 @@
 </head>
 <body>
     <div class="container">
-        <!-- Header -->
         <header class="header">
             <div class="header-content">
                 <div class="header-top">
@@ -29,7 +28,6 @@
             </div>
         </header>
 
-        <!-- Navigation Tabs -->
         <nav class="nav-tabs">
             <button class="tab-button active" data-tab="embed">
                 <i class="fas fa-plus-circle"></i> Embed Watermark
@@ -39,7 +37,6 @@
             </button>
         </nav>
 
-        <!-- Embed Watermark Tab -->
         <div id="embed-tab" class="tab-content active">
             <div class="card">
                 <div class="card-header">
@@ -74,8 +71,8 @@
                                 </span>
                             </label>
                             <input type="text" id="watermark-text" name="watermark_text" 
-                                   placeholder="Enter your watermark text" required maxlength="50"
-                                   data-tooltip="This text will be invisibly embedded in your video">
+                                    placeholder="Enter your watermark text" required maxlength="50"
+                                    data-tooltip="This text will be invisibly embedded in your video">
                             <div class="input-feedback">
                                 <small><span id="char-count">0</span>/50 characters</small>
                             </div>
@@ -95,8 +92,8 @@
                             </label>
                             <div class="strength-control">
                                 <input type="range" id="strength" name="strength" 
-                                       min="0.05" max="0.3" step="0.05" value="0.1"
-                                       data-tooltip="Adjust the balance between invisibility and robustness">
+                                        min="0.05" max="0.3" step="0.05" value="0.1"
+                                        data-tooltip="Adjust the balance between invisibility and robustness">
                                 <span class="strength-value">0.1</span>
                             </div>
                             <small>Lower values = more invisible, Higher values = more robust</small>
@@ -238,7 +235,6 @@
                 </div>
             </div>
 
-            <!-- Processing Status -->
             <div id="processing-status" class="processing-container" style="display: none;">
                 <div class="card">
                     <div class="card-header">
@@ -251,7 +247,6 @@
             </div>
         </div>
 
-        <!-- Manage Files Tab -->
         <div id="manage-tab" class="tab-content">
             <div class="card">
                 <div class="card-header">
@@ -271,10 +266,8 @@
         </div>
     </div>
 
-    <!-- Toast Notifications -->
     <div id="toast-container"></div>
 
-    <!-- Welcome Tour Modal -->
     <div id="welcome-modal" class="modal" style="display: none;">
         <div class="modal-content">
             <div class="modal-header">
@@ -314,13 +307,11 @@
         </div>
     </div>
 
-    <!-- Tooltip Container -->
     <div id="tooltip" class="tooltip" style="display: none;">
         <div class="tooltip-content"></div>
         <div class="tooltip-arrow"></div>
     </div>
 
-    <!-- Tour Overlay -->
     <div id="tour-overlay" class="tour-overlay" style="display: none;">
         <div class="tour-spotlight"></div>
         <div class="tour-popup">
@@ -339,7 +330,6 @@
         </div>
     </div>
 
-    <!-- Scripts -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
