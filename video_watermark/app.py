@@ -12,7 +12,14 @@ from werkzeug.utils import secure_filename
 import json
 from datetime import datetime
 from dotenv import load_dotenv
-from tamper_detection import analyze_video_for_tampering
+
+# Core modules from the project structure
+# NOTE: The import path for tamper_detection is corrected below
+# If tamper_detection.py is in 'watermark/' folder:
+from watermark.tamper_detection import analyze_video_for_tampering
+# If tamper_detection.py is in the root folder:
+# from tamper_detection import analyze_video_for_tampering
+
 from watermark.dct_watermark import DCTWatermark
 from watermark.video_processor import VideoProcessor
 import config
@@ -219,11 +226,12 @@ def process_video_worker():
                 socketio.emit('processing_update', processing_status[task_id], room=task_id)
                 
                 # Clean up files on error
-                for path in [input_path, output_path]:
-                    if 'path' in locals() and os.path.exists(path):
+                # Ensure input_path and output_path are defined before using them in cleanup
+                for path_var in ['input_path', 'output_path']:
+                    if path_var in locals() and os.path.exists(locals()[path_var]):
                         try:
-                            os.remove(path)
-                            logger.debug(f"Cleaned up file on error: {path}")
+                            os.remove(locals()[path_var])
+                            logger.debug(f"Cleaned up file on error: {locals()[path_var]}")
                         except OSError:
                             pass
         finally:
@@ -235,6 +243,10 @@ worker_thread.start()
 
 # Load existing file registry
 file_registry = load_file_registry()
+
+# ----------------------------------------------------------
+# 🌐 Web Routes
+# ----------------------------------------------------------
 
 @app.route('/')
 def index():
@@ -523,7 +535,7 @@ def extract_watermark():
                 'success': False,
                 'message': 'No watermark detected or extraction failed'
             })
-    
+        
     except Exception as e:
         logger.error(f"Error extracting watermark: {e}", exc_info=True)
         # Clean up on error
@@ -683,18 +695,38 @@ def get_metrics():
 # ✅ NEW FEATURE: Tamper Detection API
 # ----------------------------------------------------------
 @app.route("/api/detect-tamper", methods=["POST"])
+@rate_limit(limit=5, window=60) # Apply rate limiting to this CPU-intensive task
+@secure_endpoint
 def detect_tamper():
-    """Analyzes a video for possible tampering."""
+    """
+    Analyzes a video for possible tampering.
+    Expects a JSON payload with 'file_id' corresponding to a processed file.
+    """
     try:
-        video_path = request.json.get("video_path")
-        if not video_path:
-            return jsonify({"error": "Missing 'video_path'"}), 400
+        data = request.get_json()
+        file_id = data.get("file_id")
+
+        if not file_id:
+            return jsonify({"error": "Missing 'file_id' for analysis"}), 400
+        
+        if file_id not in file_registry:
+            return jsonify({'error': 'Processed file not found in registry'}), 404
+
+        # Retrieve file path from registry
+        file_info = file_registry[file_id]
+        video_path = os.path.join(app.config['PROCESSED_FOLDER'], file_info['processed_filename'])
 
         if not os.path.exists(video_path):
-            return jsonify({"error": f"Video not found: {video_path}"}), 404
+            return jsonify({"error": f"Video not found on disk: {video_path}"}), 404
 
         logger.info(f"🔍 Starting tamper analysis for {video_path}...")
-        report = analyze_video_for_tampering(video_path, ref_frame_interval=60, max_frames=1500)
+        
+        # Call the core analysis function
+        report = analyze_video_for_tampering(
+            video_path, 
+            ref_frame_interval=60, 
+            max_frames=1500
+        )
         logger.info(f"✅ Tamper analysis completed for {video_path}")
 
         return jsonify(report)
@@ -703,55 +735,10 @@ def detect_tamper():
         logger.error(f"❌ Tamper detection failed: {e}", exc_info=True)
         return jsonify({"error": f"Tamper detection failed: {str(e)}"}), 500
 
-    """Get application metrics for monitoring"""
-    try:
-        # Processing metrics
-        processing_metrics = {
-            'total_files_processed': len(file_registry),
-            'active_processes': len([s for s in processing_status.values() if s['status'] == 'processing']),
-            'queue_length': processing_queue.qsize(),
-            'success_rate': 0
-        }
-        
-        # Calculate success rate
-        if processing_status:
-            successful = len([s for s in processing_status.values() if s['status'] == 'completed'])
-            total = len(processing_status)
-            processing_metrics['success_rate'] = round((successful / total) * 100, 2)
-        
-        # Storage metrics
-        processed_files = list(file_registry.values())
-        total_size = sum(f.get('file_size', 0) for f in processed_files)
-        
-        storage_metrics = {
-            'total_processed_files': len(processed_files),
-            'total_storage_mb': round(total_size / (1024 * 1024), 2),
-            'average_file_size_mb': round((total_size / len(processed_files)) / (1024 * 1024), 2) if processed_files else 0
-        }
-        
-        # System metrics (if psutil available)
-        system_metrics = {}
-        try:
-            cpu_percent = psutil.cpu_percent(interval=0.1)
-            memory = psutil.virtual_memory()
-            system_metrics = {
-                'cpu_usage': cpu_percent,
-                'memory_usage': memory.percent,
-                'memory_available_gb': round(memory.available / (1024**3), 2)
-            }
-        except:
-            system_metrics = {'error': 'psutil not available'}
-        
-        return jsonify({
-            'processing': processing_metrics,
-            'storage': storage_metrics,
-            'system': system_metrics,
-            'timestamp': datetime.now().isoformat()
-        })
-    
-    except Exception as e:
-        logger.error(f"Error getting metrics: {e}")
-        return jsonify({'error': 'Failed to get metrics'}), 500
+
+# ----------------------------------------------------------
+# 💬 Socket.IO Handlers
+# ----------------------------------------------------------
 
 @socketio.on('connect')
 def handle_connect():
@@ -771,6 +758,7 @@ def handle_join_task(data):
         emit('processing_update', processing_status[task_id])
 
 if __name__ == '__main__':
+    # ... Startup logging messages (kept original for consistency)
     logger.info(f"🎬 Starting {config.APP_NAME} v{config.VERSION}")
     logger.info(f"📊 Server running on http://{config.HOST}:{config.PORT}")
     logger.info(f"📁 Upload folder: {UPLOAD_FOLDER}")
