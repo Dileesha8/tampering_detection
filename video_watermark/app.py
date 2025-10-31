@@ -12,7 +12,7 @@ from werkzeug.utils import secure_filename
 import json
 from datetime import datetime
 from dotenv import load_dotenv
-
+from tamper_detection import analyze_video_for_tampering
 from watermark.dct_watermark import DCTWatermark
 from watermark.video_processor import VideoProcessor
 import config
@@ -629,6 +629,80 @@ def get_batch_status():
 @app.route('/metrics')
 @rate_limit(limit=60, window=60)  # Standard rate limit for metrics
 def get_metrics():
+    """Get application metrics for monitoring"""
+    try:
+        # Processing metrics
+        processing_metrics = {
+            'total_files_processed': len(file_registry),
+            'active_processes': len([s for s in processing_status.values() if s['status'] == 'processing']),
+            'queue_length': processing_queue.qsize(),
+            'success_rate': 0
+        }
+
+        # Calculate success rate
+        if processing_status:
+            successful = len([s for s in processing_status.values() if s['status'] == 'completed'])
+            total = len(processing_status)
+            processing_metrics['success_rate'] = round((successful / total) * 100, 2)
+
+        # Storage metrics
+        processed_files = list(file_registry.values())
+        total_size = sum(f.get('file_size', 0) for f in processed_files)
+
+        storage_metrics = {
+            'total_processed_files': len(processed_files),
+            'total_storage_mb': round(total_size / (1024 * 1024), 2),
+            'average_file_size_mb': round((total_size / len(processed_files)) / (1024 * 1024), 2) if processed_files else 0
+        }
+
+        # System metrics (if psutil available)
+        system_metrics = {}
+        try:
+            cpu_percent = psutil.cpu_percent(interval=0.1)
+            memory = psutil.virtual_memory()
+            system_metrics = {
+                'cpu_usage': cpu_percent,
+                'memory_usage': memory.percent,
+                'memory_available_gb': round(memory.available / (1024**3), 2)
+            }
+        except Exception:
+            pass
+
+        return jsonify({
+            'processing': processing_metrics,
+            'storage': storage_metrics,
+            'system': system_metrics
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting metrics: {e}")
+        return jsonify({'error': 'Failed to get metrics'}), 500
+
+
+# ----------------------------------------------------------
+# ✅ NEW FEATURE: Tamper Detection API
+# ----------------------------------------------------------
+@app.route("/api/detect-tamper", methods=["POST"])
+def detect_tamper():
+    """Analyzes a video for possible tampering."""
+    try:
+        video_path = request.json.get("video_path")
+        if not video_path:
+            return jsonify({"error": "Missing 'video_path'"}), 400
+
+        if not os.path.exists(video_path):
+            return jsonify({"error": f"Video not found: {video_path}"}), 404
+
+        logger.info(f"🔍 Starting tamper analysis for {video_path}...")
+        report = analyze_video_for_tampering(video_path, ref_frame_interval=60, max_frames=1500)
+        logger.info(f"✅ Tamper analysis completed for {video_path}")
+
+        return jsonify(report)
+
+    except Exception as e:
+        logger.error(f"❌ Tamper detection failed: {e}", exc_info=True)
+        return jsonify({"error": f"Tamper detection failed: {str(e)}"}), 500
+
     """Get application metrics for monitoring"""
     try:
         # Processing metrics
