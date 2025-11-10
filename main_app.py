@@ -1,56 +1,57 @@
-from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for
+from flask import Flask, render_template, jsonify
 from flask_cors import CORS
-from werkzeug.utils import secure_filename
-import os
+import subprocess
 import sys
+import os
 from pathlib import Path
-
-# Add subdirectories to path
-sys.path.insert(0, str(Path(__file__).parent / 'video_watermark'))
-sys.path.insert(0, str(Path(__file__).parent / 'video_tamper_detection'))
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
-app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['PROCESSED_FOLDER'] = 'processed'
-
 CORS(app)
 
-# Ensure directories exist
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-os.makedirs(app.config['PROCESSED_FOLDER'], exist_ok=True)
+# Folder paths
+BASE_DIR = Path(__file__).parent
+WATERMARK_APP = BASE_DIR / "video_watermark" / "app.py"
+TAMPER_APP = BASE_DIR / "video_tamper_detection" / "app.py"
 
-ALLOWED_EXTENSIONS = {'mp4', 'avi', 'mov', 'mkv', 'wmv', 'flv', 'webm'}
+# Launch both sub-apps automatically
+def launch_subapps():
+    print("🚀 Launching sub-applications...")
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    # Start video_watermark app (port 8000)
+    subprocess.Popen([sys.executable, str(WATERMARK_APP)], cwd=WATERMARK_APP.parent)
 
-@app.route('/')
+    # Start video_tamper_detection app (port 8001)
+    subprocess.Popen([sys.executable, str(TAMPER_APP)], cwd=TAMPER_APP.parent)
+
+    print("✅ Both sub-apps are running.")
+
+@app.route("/")
 def index():
-    """Main landing page with two options"""
-    return render_template('main_index.html')
+    """Main landing page"""
+    return render_template("main_index.html")
 
-@app.route('/watermark')
+@app.route("/watermark")
 def watermark_page():
-    """Redirect to watermark functionality"""
-    return redirect('http://localhost:8000')
+    """Open the watermarking tool (already running on port 8000)"""
+    return jsonify({"redirect": "http://127.0.0.1:8000"})
 
-@app.route('/tamper-detection')
+@app.route("/tamper-detection")
 def tamper_detection_page():
-    """Redirect to tamper detection functionality"""
-    return redirect('http://localhost:8001')
+    """Open the tamper detection tool (already running on port 8001)"""
+    return jsonify({"redirect": "http://127.0.0.1:8001"})
 
-@app.route('/health')
+@app.route("/health")
 def health():
-    """Health check endpoint"""
+    """Check sub-app status"""
     return jsonify({
-        'status': 'healthy',
-        'services': {
-            'watermark': 'http://localhost:8000',
-            'tamper_detection': 'http://localhost:8001'
+        "status": "healthy",
+        "services": {
+            "watermark": "http://127.0.0.1:8000",
+            "tamper_detection": "http://127.0.0.1:8001"
         }
     })
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+if __name__ == "__main__":
+    launch_subapps()
+    app.run(host="0.0.0.0", port=5000, debug=True)
